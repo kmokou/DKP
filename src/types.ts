@@ -133,6 +133,18 @@ export interface StudyContext {
   updatedAt: number;
   pages: ContextPage[];
 }
+export interface LlmLog {
+  id: string;
+  contextId?: string;
+  timestamp: string;
+  provider: ProviderId;
+  model: string;
+  operation: string;
+  endpoint?: string;
+  request: unknown;
+  response?: unknown;
+  error?: unknown;
+}
 export interface ProviderState {
   provider: ProviderId;
   hasKey: boolean;

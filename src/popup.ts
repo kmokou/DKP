@@ -1,39 +1,48 @@
+import type { StudyContext } from "./types";
 import { stringifyUnknown } from "./core";
 
-const openButton = document.getElementById("open") as HTMLButtonElement;
+const root = document.getElementById("contexts")!;
+const form = document.getElementById("new-context") as HTMLFormElement;
+const nameInput = document.getElementById("context-name") as HTMLInputElement;
 const error = document.getElementById("error") as HTMLParagraphElement;
+const settings = document.getElementById("settings") as HTMLAnchorElement;
 
-openButton.addEventListener("click", async () => {
-  openButton.disabled = true;
-  openButton.textContent = "Opening DKP…";
-  try {
-    const [tab] = await browser.tabs.query({
-      active: true,
-      currentWindow: true,
-    });
-    if (!tab?.id || !tab.url || !/^https?:\/\//.test(tab.url))
-      throw new Error(
-        "Open a lesson or exercise first, then click the DKP icon.",
-      );
-    const response = await browser.runtime.sendMessage({
-      type: "openWorkspace",
-      sourceTabId: tab.id,
-    });
-    if (!response?.ok)
-      throw response?.error || new Error("DKP could not open.");
-    window.close();
-  } catch (reason) {
-    error.hidden = false;
-    if (reason && typeof reason === "object" && "message" in reason) {
-      const report = reason as { title?: unknown; message: unknown };
-      const title = typeof report.title === "string" ? `${report.title}: ` : "";
-      error.textContent = title + stringifyUnknown(report.message);
-    } else
-      error.textContent =
-        reason instanceof Error
-          ? reason.message
-          : "DKP could not open.";
-    openButton.disabled = false;
-    openButton.innerHTML = "Open DKP workspace <span>↗</span>";
+async function rpc<T>(message: Record<string, unknown>): Promise<T> {
+  const response = await browser.runtime.sendMessage(message);
+  if (!response?.ok) throw response?.error || new Error("DKP could not respond.");
+  return response.data as T;
+}
+function showError(reason: unknown) {
+  error.hidden = false;
+  const value = reason && typeof reason === "object" && "message" in reason
+    ? reason as { title?: string; message: unknown } : undefined;
+  error.textContent = (value?.title ? value.title + ": " : "") + stringifyUnknown(value?.message ?? reason);
+}
+async function openContext(contextId: string) {
+  const [tab] = await browser.tabs.query({ active: true, currentWindow: true });
+  if (!tab?.id || !tab.url || !/^https?:\/\//.test(tab.url)) throw new Error("Open a lesson or exercise first.");
+  const response = await browser.runtime.sendMessage({ type: "openWorkspace", sourceTabId: tab.id, contextId });
+  if (!response?.ok) throw response?.error || new Error("DKP could not open the context.");
+  window.close();
+}
+function render(contexts: StudyContext[]) {
+  root.replaceChildren();
+  if (!contexts.length) { const empty = document.createElement("p"); empty.className = "muted"; empty.textContent = "No contexts yet. Create one below."; root.append(empty); return; }
+  for (const context of contexts) {
+    const button = document.createElement("button"); button.className = "context-choice"; button.type = "button";
+    const copy = document.createElement("span"); const title = document.createElement("b"); title.textContent = context.name;
+    const meta = document.createElement("small"); meta.textContent = context.pages.length + " page" + (context.pages.length === 1 ? "" : "s"); copy.append(title, meta);
+    const action = document.createElement("span"); action.textContent = "+ Add page"; button.append(copy, action);
+    button.onclick = () => void openContext(context.id).catch(showError); root.append(button);
   }
+}
+async function start() {
+  try { const state = await rpc<{ contexts: StudyContext[] }>({ type: "state" }); render(state.contexts); settings.href = browser.runtime.getURL("sidebar.html#settings"); }
+  catch (reason) { showError(reason); }
+}
+form.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  try { const context = await rpc<StudyContext>({ type: "createContext", name: nameInput.value }); await openContext(context.id); }
+  catch (reason) { showError(reason); }
 });
+void start();

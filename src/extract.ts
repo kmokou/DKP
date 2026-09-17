@@ -153,6 +153,26 @@ export function extract(doc: Document = document): Extraction {
       tasks.push(task);
     }
   }
+  // Keep a conservative local fallback for discussion and comprehension
+  // questions when semantic AI mapping is unavailable. Headings are left out
+  // because article subheads often end with a question mark.
+  if (!tasks.length) {
+    const questionBlocks = blocks.filter((block) =>
+      !/^h[1-6]$/i.test(block.kind) && block.text.length >= 24 && /\?/.test(block.text),
+    );
+    if (questionBlocks.length < 2) questionBlocks.length = 0;
+    for (const block of questionBlocks) {
+      tasks.push({
+        id: `t-${block.id}`,
+        blockId: block.id,
+        text: block.text,
+        kind: "text-question",
+        choices: [],
+        fields: [],
+        dependency: "none",
+      });
+    }
+  }
   const media = Array.from(
     root.querySelectorAll("video,audio,iframe,embed,object,a[href]"),
   )

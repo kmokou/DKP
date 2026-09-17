@@ -15,13 +15,14 @@ DKP is a Firefox study companion that understands readings and exercises as sepa
 - **Cross-page contexts.** Add readings and exercises to one context, then answer a task using relevant material from other pages.
 - **Semantic page mapping.** The selected AI provider separates topics, real questions, native quiz blocks and incomplete references. Article headings such as “What is lifelong learning?” are not automatically treated as exercises.
 - **Topics and quizzes stay separate.** Summary and translation actions belong to reading regions; answer and solve actions belong to genuine tasks.
-- **Solve all page.** One full-width action handles every detected task, fills supported empty controls and leaves submission to you.
+- **Solve all tasks.** One full-width action handles every detected task, fills supported empty controls and leaves submission to you.
 - **Grounded explanations.** Why this answer can include verified source excerpts. Click an excerpt to open the source page and highlight it for five seconds.
 - **Four AI providers.** Connect Google Gemini, OpenAI, Anthropic Claude or DeepSeek with your own API key, then select a model returned by that provider.
 - **Native-language support.** Explanations, summaries and translations default to Russian. Form-ready answers remain in the exercise language.
 - **Complex-task strategy.** DKP returns a structured long answer when evidence is sufficient, or explains the solution process and missing assumptions.
 - **Precise missing-media warnings.** A warning appears only when the particular task requires an unavailable video, audio file or document.
 - **Detailed errors.** Provider, endpoint, status and sanitized response details appear on screen. API keys are redacted.
+- **DevTools LLM chat.** Open DevTools inside a context to inspect raw prompts, source blocks, schemas, provider responses and errors. Logs stay local and credentials are redacted.
 
 ## Temporary installation in Firefox
 
@@ -45,7 +46,7 @@ Load the extension:
 3. Click **Load Temporary Add-on…**
 4. Select **dist/manifest.json**.
 5. Open a lesson, article or exercise in a normal web tab.
-6. Click the DKP toolbar icon and choose **Open DKP workspace**.
+6. Click the DKP toolbar icon and add the page to a context.
 
 Firefox removes a temporary extension when the browser closes. Repeat steps 2–4 after restarting Firefox. A signed AMO release is planned after the beta stabilizes.
 
@@ -57,8 +58,7 @@ Firefox removes a temporary extension when the browser closes. Repeat steps 2–
 4. Decide whether Firefox should remember it locally.
 5. Click **Save & load models**.
 6. Choose a model from the returned list and save preferences.
-7. Return to **Workspace**.
-8. Add the current page to an existing context or create a new one.
+7. Open the context to ask questions across its pages.
 
 DKP uses the provider account, quota and billing attached to your API key. It does not include an API subscription.
 
@@ -76,6 +76,8 @@ When you solve the matching exercise, DKP retrieves relevant excerpts from the a
 
 Each context stores up to 12 compact page snapshots locally. You can remove one page or delete the entire context from the **Contexts** tab.
 
+The context workspace also includes **DevTools**, a chronological raw LLM conversation for debugging. It records the exact system and user payloads sent by DKP, retrieval material, schemas, provider metadata and the unmodified response or error. API keys and authorization headers are never recorded.
+
 ## Page actions
 
 | Action | When it appears | Behavior |
@@ -84,7 +86,7 @@ Each context stores up to 12 compact page snapshots locally. You can remove one 
 | Translate | A reading region exists | Translates into the configured native language |
 | Answer questions | Genuine prose questions exist | Answers question groups without treating headings as tasks |
 | Solve tasks | Native or complex exercises exist | Produces structured answers and field mappings |
-| Solve all page | At least one task exists | Solves all detected tasks and fills supported empty fields |
+| Solve all tasks | At least one task exists | Solves all detected tasks and fills supported empty fields |
 | Ask across context | After a page is in a context | Retrieves evidence from every related stored page |
 
 DKP supports standard text inputs, number inputs, textareas, radio buttons, checkboxes and native select elements. Rich-text editors, drag-and-drop exercises, canvas activities and custom H5P components remain best-effort.

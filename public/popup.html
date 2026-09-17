@@ -8,15 +8,11 @@
   </head>
   <body>
     <main>
-      <img src="icons/icon.svg" width="42" height="42" alt="DKP" />
-      <div>
-        <p class="eyebrow">DEEP KNOWLEDGE PARTNER</p>
-        <h1>Drill. Know.<br />Practice.</h1>
-        <p class="copy">Connect this page to a context and work across the whole topic.</p>
-      </div>
-      <button id="open" type="button">
-        Open DKP workspace <span>↗</span>
-      </button>
+      <div class="heading"><img src="icons/icon.svg" width="38" height="38" alt="DKP" /><div><p class="eyebrow">DKP · CONTEXTS</p><h1>Add this page</h1></div></div>
+      <p class="copy">Choose where this page belongs. DKP will analyse it after adding.</p>
+      <div id="contexts" class="contexts"><p class="muted">Loading contexts…</p></div>
+      <form id="new-context"><input id="context-name" maxlength="80" placeholder="New context name" required /><button type="submit">+ Create context</button></form>
+      <a id="settings" href="#">Settings ↗</a>
       <p id="error" role="status" hidden></p>
     </main>
     <script src="popup.js"></script>

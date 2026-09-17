@@ -1,4 +1,4 @@
-import { defaults, providerLabels, type GenerateRequest, type ProviderId, type Result,
+import { defaults, providerLabels, type GenerateRequest, type LlmLog, type ProviderId, type Result,
   type SemanticMap, type Settings, type Snapshot, type StudyContext } from "./types";
 import { cacheInput, chunks, hash, responseSchema, semanticPrompt, semanticSchema,
   sourceText, stringifyUnknown, systemPrompt, validateResult, validateSemanticMap } from "./core";
@@ -82,14 +82,28 @@ async function getContexts(): Promise<StudyContext[]> {
 async function saveContexts(contexts: StudyContext[]) {
   await browser.storage.local.set({ contexts: contexts.slice(0, 12) });
 }
+const providerEndpoints: Record<ProviderId, string> = {
+  gemini: "https://generativelanguage.googleapis.com/v1beta/models",
+  openai: "https://api.openai.com/v1/chat/completions",
+  anthropic: "https://api.anthropic.com/v1/messages",
+  deepseek: "https://api.deepseek.com/chat/completions",
+};
+async function appendLlmLog(log: LlmLog) {
+  await serialWrite(async () => {
+    const stored = ((await browser.storage.local.get("llmLogs")).llmLogs || []) as LlmLog[];
+    stored.push(redact(log) as LlmLog);
+    await browser.storage.local.set({ llmLogs: stored.slice(-160) });
+  });
+}
 
 function fallbackSemanticMap(snapshot: Snapshot): SemanticMap {
   const units: SemanticMap["units"] = snapshot.tasks
-    .filter((task) => task.kind === "moodle-task")
+    .filter((task) => task.kind === "moodle-task" || task.kind === "text-question")
     .map((task, index) => ({
       id: `native-${index}`, type: "quiz", startBlockId: task.blockId,
-      endBlockId: task.blockId, anchorBlockId: task.blockId, action: "solve",
-      reason: "Native LMS question control",
+      endBlockId: task.blockId, anchorBlockId: task.blockId,
+      action: task.kind === "text-question" ? "answer" : "solve",
+      reason: task.kind === "text-question" ? "Prose question fallback" : "Native LMS question control",
     }));
   const end = snapshot.words >= 80 ? summaryEndBlockId(snapshot) : undefined;
   if (end) units.push({
@@ -126,11 +140,24 @@ async function classify(snapshot: Snapshot, force = false): Promise<SemanticMap>
       prompt: `${semanticPrompt}\n\nPAGE:\n${JSON.stringify({ title: snapshot.title, blocks: compact })}`,
       schema: semanticSchema, signal: controller.signal,
     });
+    await appendLlmLog({
+      id: crypto.randomUUID(), timestamp: new Date().toISOString(), provider: settings.provider,
+      model, operation: "semantic-map",
+      endpoint: providerEndpoints[settings.provider],
+      request: { system: systemPrompt, prompt: `${semanticPrompt}\n\nPAGE:\n${JSON.stringify({ title: snapshot.title, blocks: compact })}`, schema: semanticSchema },
+      response: { text: response.text, tokens: response.tokens, requestId: response.requestId },
+    });
     const result = validateSemanticMap(parseJsonText(response.text), snapshot);
     const safe = result.units.length ? result : fallbackSemanticMap(snapshot);
     await browser.storage.session.set({ [cacheKey]: safe });
     return safe;
-  } catch {
+  } catch (error) {
+    await appendLlmLog({
+      id: crypto.randomUUID(), timestamp: new Date().toISOString(), provider: settings.provider,
+      model, operation: "semantic-map", endpoint: providerEndpoints[settings.provider],
+      request: { system: systemPrompt, prompt: semanticPrompt, schema: semanticSchema },
+      error: errorDetail(error),
+    }).catch(() => {});
     return fallbackSemanticMap(snapshot);
   } finally { clearTimeout(timer); }
 }
@@ -200,11 +227,30 @@ async function generate(request: GenerateRequest, owner: string): Promise<Result
       unavailableMaterial: snapshot.media,
       instruction: "Warnings about unavailable material are allowed only when a supplied task explicitly depends on it.",
     });
-    const response = await providers[settings.provider].generate({
-      apiKey: key, model, system: systemPrompt, prompt, schema: responseSchema,
-      image: request.attachment ? { mimeType: request.attachment.mimeType, data: request.attachment.data } : undefined,
-      signal: controller.signal,
-    });
+    let response;
+    try {
+      response = await providers[settings.provider].generate({
+        apiKey: key, model, system: systemPrompt, prompt, schema: responseSchema,
+        image: request.attachment ? { mimeType: request.attachment.mimeType, data: request.attachment.data } : undefined,
+        signal: controller.signal,
+      });
+      await appendLlmLog({
+        id: crypto.randomUUID(), contextId: request.contextId, timestamp: new Date().toISOString(),
+        provider: settings.provider, model, operation, endpoint: providerEndpoints[settings.provider],
+        request: { system: systemPrompt, prompt, schema: responseSchema,
+          image: request.attachment ? { mimeType: request.attachment.mimeType, data: request.attachment.data } : undefined },
+        response: { text: response.text, tokens: response.tokens, requestId: response.requestId },
+      });
+    } catch (error) {
+      await appendLlmLog({
+        id: crypto.randomUUID(), contextId: request.contextId, timestamp: new Date().toISOString(),
+        provider: settings.provider, model, operation, endpoint: providerEndpoints[settings.provider],
+        request: { system: systemPrompt, prompt, schema: responseSchema,
+          image: request.attachment ? { mimeType: request.attachment.mimeType, data: request.attachment.data } : undefined },
+        error: errorDetail(error),
+      }).catch(() => {});
+      throw error;
+    }
     if (!response.text) throw new Error("The AI provider returned no content.");
     tokens += response.tokens;
     const result = validateResult(parseJsonText(response.text), snapshot);
@@ -300,7 +346,14 @@ browser.runtime.onMessage.addListener((message, sender) => {
       case "openWorkspace": {
         if (typeof message.sourceTabId !== "number") throw new Error("Open DKP from a lesson tab.");
         await ensureContent(message.sourceTabId);
-        await browser.tabs.create({ url: browser.runtime.getURL(`sidebar.html?tabId=${message.sourceTabId}`) });
+        const contextQuery = typeof message.contextId === "string" && message.contextId
+          ? `&contextId=${encodeURIComponent(message.contextId)}` : "";
+        await browser.tabs.create({ url: browser.runtime.getURL(`sidebar.html?tabId=${message.sourceTabId}${contextQuery}`) });
+        return true;
+      }
+      case "ensurePage": {
+        if (typeof message.tabId !== "number") throw new Error("The lesson tab is unavailable.");
+        await ensureContent(message.tabId);
         return true;
       }
       case "state": {
@@ -314,6 +367,17 @@ browser.runtime.onMessage.addListener((message, sender) => {
             remembered: !!local[provider], model: settings.models[provider] || "",
           })),
         };
+      }
+      case "devtoolsLogs": {
+        const logs = ((await browser.storage.local.get("llmLogs")).llmLogs || []) as LlmLog[];
+        return logs.filter((log) => !message.contextId || log.contextId === message.contextId);
+      }
+      case "clearDevtoolsLogs": {
+        const logs = ((await browser.storage.local.get("llmLogs")).llmLogs || []) as LlmLog[];
+        await browser.storage.local.set({ llmLogs: message.contextId
+          ? logs.filter((log) => log.contextId !== message.contextId)
+          : [] });
+        return true;
       }
       case "saveSettings": {
         const current = await getSettings();

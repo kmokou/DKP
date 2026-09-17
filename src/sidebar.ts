@@ -1,10 +1,11 @@
-import { providerLabels, type Attachment, type ModelOption, type ProviderId,
+import { providerLabels, type Attachment, type LlmLog, type ModelOption, type ProviderId,
   type ProviderState, type Result, type SemanticMap, type Settings,
   type Snapshot, type StudyContext } from "./types";
 import { stringifyUnknown } from "./core";
 
 const get = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
 const sourceTabId = Number(new URLSearchParams(location.search).get("tabId")) || 0;
+let selectedContextId = new URLSearchParams(location.search).get("contextId") || "";
 let settings: Settings;
 let contexts: StudyContext[] = [];
 let providerStates: ProviderState[] = [];
@@ -17,6 +18,20 @@ async function rpc<T = any>(message: Record<string, unknown>): Promise<T> {
   const response = await browser.runtime.sendMessage(message);
   if (!response?.ok) throw response?.error || new Error("DKP did not respond.");
   return response.data as T;
+}
+async function sendToPage<T = any>(message: Record<string, unknown>): Promise<T> {
+  try {
+    return await browser.tabs.sendMessage(sourceTabId, message) as T;
+  } catch (firstError) {
+    // Firefox drops content-script ports after a page reload or temporary
+    // extension reload. Re-inject once, then retry the same request.
+    try {
+      await rpc({ type: "ensurePage", tabId: sourceTabId });
+      return await browser.tabs.sendMessage(sourceTabId, message) as T;
+    } catch {
+      throw firstError;
+    }
+  }
 }
 function errorValue(reason: unknown) {
   if (reason && typeof reason === "object" && "message" in reason) {
@@ -65,20 +80,20 @@ async function loadState() {
 }
 async function scanPage() {
   if (!sourceTabId) throw new Error("Open DKP from a lesson or exercise tab.");
-  snapshot = await browser.tabs.sendMessage(sourceTabId, { type: "scan" });
+  snapshot = await sendToPage<Snapshot>({ type: "scan" });
   get("page-loading").hidden = true;
   const normalizedUrl = snapshot!.url.split("#")[0].split("?")[0];
-  activeContext = contexts.find((context) => context.pages.some((page) =>
+  activeContext = contexts.find((context) => context.id === selectedContextId) || contexts.find((context) => context.pages.some((page) =>
     page.url.split("#")[0].split("?")[0] === normalizedUrl));
   if (!activeContext) return showContextGate();
   const stored = activeContext.pages.find((page) =>
     page.url.split("#")[0].split("?")[0] === normalizedUrl);
   if (stored?.semanticMap) {
     semanticMap = stored.semanticMap;
-    await browser.tabs.sendMessage(sourceTabId, {
+    await sendToPage({
       type: "applySemanticMap", semanticMap, contextId: activeContext.id,
     });
-    snapshot = await browser.tabs.sendMessage(sourceTabId, { type: "scan" });
+    snapshot = await sendToPage<Snapshot>({ type: "scan" });
     showWorkspace();
   } else await activateContext(activeContext.id);
 }
@@ -123,10 +138,10 @@ async function activateContext(contextId: string) {
     semanticMap = data.semanticMap;
     activeContext = data.context;
     contexts = contexts.map((item) => item.id === data.context.id ? data.context : item);
-    await browser.tabs.sendMessage(sourceTabId, {
+    await sendToPage({
       type: "applySemanticMap", semanticMap, contextId,
     });
-    snapshot = await browser.tabs.sendMessage(sourceTabId, { type: "scan" });
+    snapshot = await sendToPage<Snapshot>({ type: "scan" });
     showWorkspace();
   } catch (error) {
     get("page-loading").hidden = true;
@@ -145,24 +160,52 @@ function showWorkspace() {
   get("page-tasks").textContent = snapshot.tasks.length + " tasks";
   get("active-context-name").textContent = activeContext.name;
   get("page-kind").textContent = (semanticMap?.pageType || "page").toUpperCase();
-  const taskCount = snapshot.tasks.length;
-  get("solve-all").hidden = taskCount === 0;
-  get("solve-count").textContent = taskCount + " tasks →";
-  const hasTopic = !!semanticMap?.units.some((unit) => unit.action === "summary");
-  const hasQuestions = snapshot.tasks.some((task) => task.kind === "text-question");
-  const hasTasks = snapshot.tasks.some((task) => task.kind !== "text-question");
-  (get("summarize") as HTMLButtonElement).disabled = !hasTopic;
-  (get("translate") as HTMLButtonElement).disabled = !hasTopic;
-  (get("answer-questions") as HTMLButtonElement).disabled = !hasQuestions;
-  (get("solve-tasks") as HTMLButtonElement).disabled = !hasTasks;
-  get("translate-label").textContent = "Into " + settings.nativeLanguage;
+  const detail = get("context-detail-pages");
+  detail.replaceChildren();
+  for (const page of activeContext.pages) {
+    const row = document.createElement("div"); row.className = "stored-page";
+    const copy = document.createElement("span");
+    const title = document.createElement("b"); title.textContent = page.title;
+    const url = document.createElement("small"); url.textContent = page.url;
+    copy.append(title, url); row.append(copy); detail.append(row);
+  }
+  get("context-detail-copy").textContent = activeContext.pages.length + " page" + (activeContext.pages.length === 1 ? "" : "s") + " connected. Ask questions using all of them.";
   const provider = providerStates.find((item) => item.provider === settings.provider);
   get("provider-status").textContent = provider?.hasKey
     ? providerLabels[settings.provider] + " · " + (settings.models[settings.provider] || "model")
     : "Connect " + providerLabels[settings.provider] + " in Settings";
 }
 
+function renderDevtools(logs: LlmLog[]) {
+  const root = get("devtools-log");
+  root.replaceChildren();
+  if (!logs.length) { const empty = document.createElement("p"); empty.className = "help"; empty.textContent = "No LLM transactions for this context yet."; root.append(empty); return; }
+  for (const log of logs) {
+    const entry = document.createElement("article"); entry.className = "log-entry";
+    const meta = document.createElement("div"); meta.className = "log-meta";
+    const label = document.createElement("span"); label.textContent = log.operation;
+    const time = document.createElement("time"); time.textContent = new Date(log.timestamp).toLocaleString();
+    meta.append(label, time);
+    const info = document.createElement("div"); info.className = "help"; info.textContent = log.provider + " · " + log.model + (log.endpoint ? " · " + log.endpoint : "");
+    const request = document.createElement("details"); request.open = true; const rs = document.createElement("summary"); rs.textContent = "Raw request"; const rp = document.createElement("pre"); rp.textContent = JSON.stringify(log.request, null, 2); request.append(rs, rp);
+    const response = document.createElement("details"); response.open = true; const ss = document.createElement("summary"); ss.textContent = log.error ? "Raw error" : "Raw response"; const sp = document.createElement("pre"); sp.textContent = JSON.stringify(log.error || log.response, null, 2); response.append(ss, sp);
+    entry.append(meta, info, request, response); root.append(entry);
+  }
+}
+async function openDevtools() {
+  if (!activeContext) return;
+  get("devtools-panel").hidden = false;
+  renderDevtools(await rpc<LlmLog[]>({ type: "devtoolsLogs", contextId: activeContext.id }));
+  get("devtools-panel").scrollIntoView({ behavior: "smooth", block: "start" });
+}
+
 get("change-context").addEventListener("click", showContextGate);
+get("devtools").addEventListener("click", () => void openDevtools().catch(showError));
+get("clear-devtools").addEventListener("click", async () => {
+  if (!activeContext || !confirm("Clear raw LLM logs for this context?")) return;
+  await rpc({ type: "clearDevtoolsLogs", contextId: activeContext.id });
+  renderDevtools([]);
+});
 get<HTMLFormElement>("quick-context").addEventListener("submit", async (event) => {
   event.preventDefault();
   const input = get<HTMLInputElement>("quick-context-name");
@@ -191,13 +234,16 @@ function renderContexts() {
   if (!contexts.length) {
     const empty = document.createElement("div");
     empty.className = "empty";
-    empty.textContent = "No contexts yet. Create one, then add related pages from Workspace.";
+    empty.textContent = "No contexts yet. Create one, then add related pages from the page popup.";
     root.append(empty);
     return;
   }
   for (const context of contexts) {
     const card = document.createElement("article");
     card.className = "context-card";
+    card.tabIndex = 0;
+    card.onclick = () => openContext(context);
+    card.onkeydown = (event) => { if (event.key === "Enter" || event.key === " ") openContext(context); };
     const header = document.createElement("header");
     const copy = document.createElement("div");
     const title = document.createElement("h2");
@@ -208,7 +254,8 @@ function renderContexts() {
     const remove = document.createElement("button");
     remove.className = "text-button danger";
     remove.textContent = "Delete";
-    remove.onclick = async () => {
+    remove.onclick = async (event) => {
+      event.stopPropagation();
       if (!confirm("Delete this context and its locally stored page knowledge?")) return;
       await rpc({ type: "deleteContext", contextId: context.id });
       contexts = contexts.filter((item) => item.id !== context.id);
@@ -232,7 +279,8 @@ function renderContexts() {
       const removePage = document.createElement("button");
       removePage.className = "text-button";
       removePage.textContent = "Remove";
-      removePage.onclick = async () => {
+      removePage.onclick = async (event) => {
+        event.stopPropagation();
         await rpc({ type: "removeContextPage", contextId: context.id, pageId: page.id });
         context.pages = context.pages.filter((item) => item.id !== page.id);
         renderContexts();
@@ -242,6 +290,30 @@ function renderContexts() {
     }
     card.append(header, pages);
     root.append(card);
+  }
+}
+
+function openContext(context: StudyContext) {
+  selectedContextId = context.id;
+  activeContext = context;
+  clearError();
+  if (sourceTabId) void scanPage().catch(showError);
+  else {
+    get("context-gate").hidden = true;
+    get("active-workspace").hidden = false;
+    get("page-loading").hidden = true;
+    get("page-title").textContent = context.name;
+    get("page-url").textContent = "Context knowledge workspace";
+    get("page-words").textContent = "";
+    get("page-tasks").textContent = "";
+    get("active-context-name").textContent = context.name;
+    const detail = get("context-detail-pages");
+    detail.replaceChildren(...context.pages.map((page) => {
+      const row = document.createElement("div"); row.className = "stored-page";
+      const copy = document.createElement("span"); const title = document.createElement("b"); title.textContent = page.title;
+      const url = document.createElement("small"); url.textContent = page.url; copy.append(title, url); row.append(copy); return row;
+    }));
+    switchTab("workspace");
   }
 }
 
@@ -352,7 +424,7 @@ async function generate(mode: string) {
       attachment: await readAttachment(), requestId: activeRequestId,
     });
     renderResult(result, mode);
-    if (result.answers.length) await browser.tabs.sendMessage(sourceTabId, {
+    if (result.answers.length) await sendToPage({
       type: "annotate", result, fingerprint: snapshot.fingerprint,
     }).catch(() => {});
   } catch (error) { showError(error); }
@@ -416,11 +488,6 @@ function renderResult(result: Result, mode: string) {
   });
 }
 
-get("summarize").addEventListener("click", () => void generate("summary"));
-get("translate").addEventListener("click", () => void generate("translate"));
-get("answer-questions").addEventListener("click", () => void generate("textAnswers"));
-get("solve-tasks").addEventListener("click", () => void generate("tasks"));
-get("solve-all").addEventListener("click", () => void generate("solveAll"));
 get("ask").addEventListener("click", () => void generate("ask"));
 get("cancel").addEventListener("click", () => {
   if (activeRequestId) void rpc({ type: "cancel", requestId: activeRequestId });
@@ -429,9 +496,9 @@ get("cancel").addEventListener("click", () => {
 async function start() {
   try {
     await loadState();
-    if (location.hash === "#settings" || !sourceTabId) switchTab("settings");
-    if (sourceTabId) await scanPage();
-    else get("page-loading").hidden = true;
+    if (location.hash === "#settings") switchTab("settings");
+    else if (sourceTabId) await scanPage();
+    else { switchTab("contexts"); get("page-loading").hidden = true; }
   } catch (error) {
     get("page-loading").hidden = true;
     showError(error);

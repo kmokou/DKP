@@ -106,7 +106,7 @@ function install() {
       const shadow = makeHost(root, true);
       const button = makeButton("", () => void runAll(shadow, button), "solve-all");
       const count = actionable.length;
-      button.textContent = "✦ Solve all page · " + count + " task" + (count === 1 ? "" : "s") + " →";
+      button.textContent = "✦ Solve all tasks · " + count + " task" + (count === 1 ? "" : "s") + " →";
       shadow.append(button);
     }
     for (const unit of map.units) {
