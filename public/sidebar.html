@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>DKP · Deep Knowledge Partner</title><link rel="stylesheet" href="sidebar.css"></head>
+<body><div class="shell">
+<header class="topbar"><a class="brand" href="sidebar.html"><img src="icons/icon.svg" width="34" height="34" alt=""><span><b>DKP</b><small>Deep Knowledge Partner</small></span></a><span class="slogan">Drill. Know. Practice.</span></header>
+<nav class="tabs" aria-label="DKP navigation"><button data-tab="workspace" class="active">Workspace</button><button data-tab="contexts">Contexts <span id="context-count">0</span></button><button data-tab="settings">Settings</button></nav>
+<main>
+<section id="workspace" class="panel">
+  <div class="hero"><p class="kicker">ACTIVE PAGE</p><h1>Understand the material.<br><em>Prove the answer.</em></h1></div>
+  <div id="page-loading" class="state-card"><span class="spinner"></span><div><strong>Reading this page</strong><p>Building a safe local snapshot.</p></div></div>
+  <div id="context-gate" class="gate" hidden><p class="kicker">CHOOSE KNOWLEDGE CONTEXT</p><h2>Where does this page belong?</h2><p>Pages inside one context can support answers on one another.</p><div id="context-options" class="context-options"></div>
+    <form id="quick-context" class="quick-create"><input id="quick-context-name" placeholder="New context name" maxlength="80"><button class="button primary" type="submit">Create & add</button></form></div>
+  <div id="active-workspace" hidden>
+    <article class="page-card"><div class="page-icon">↗</div><div class="page-copy"><p class="kicker" id="page-kind">PAGE</p><h2 id="page-title">Untitled page</h2><p id="page-url"></p><div class="meta"><span id="page-words">0 words</span><span id="page-tasks">0 tasks</span><span class="context-chip" id="active-context-name"></span></div></div><button id="change-context" class="icon-button" title="Move to another context">•••</button></article>
+    <button id="solve-all" class="solve-all" hidden><span><b>✦ Solve all page</b><small>Fill supported fields, keep submission under your control</small></span><span id="solve-count">0 tasks →</span></button>
+    <div class="section-head"><h2>Study tools</h2><span id="provider-status"></span></div>
+    <div class="tool-grid">
+      <button id="summarize" class="tool"><span class="tool-icon">≋</span><b>Summarize text</b><small>Turn reading into focused notes</small></button>
+      <button id="translate" class="tool"><span class="tool-icon">文</span><b>Translate</b><small id="translate-label">Into Russian</small></button>
+      <button id="answer-questions" class="tool"><span class="tool-icon">?</span><b>Answer questions</b><small>Only genuine prose questions</small></button>
+      <button id="solve-tasks" class="tool"><span class="tool-icon">✓</span><b>Solve tasks</b><small>Native and complex exercises</small></button>
+    </div>
+    <div class="ask"><label for="question">Ask across this context</label><div><textarea id="question" rows="3" placeholder="Ask about any page inside this context…"></textarea><button id="ask" class="send" title="Ask">↑</button></div>
+      <details><summary>Add text or an exercise image</summary><textarea id="extra-context" rows="3" placeholder="Paste missing instructions or context"></textarea><label class="upload">Attach PNG, JPEG or WebP<input id="attachment" type="file" accept="image/png,image/jpeg,image/webp"></label></details></div>
+  </div>
+  <div id="progress" class="progress" hidden><span class="spinner"></span><div><strong id="progress-title">DKP is thinking</strong><p id="progress-copy">Retrieving relevant knowledge.</p></div><button id="cancel" class="text-button">Cancel</button></div>
+  <div id="error" class="error-card" hidden></div><section id="results" class="results"></section>
+</section>
+<section id="contexts" class="panel" hidden>
+  <div class="section-hero"><p class="kicker">CROSS-PAGE KNOWLEDGE</p><h1>Contexts</h1><p>Group readings and exercises that should reason together.</p></div>
+  <form id="create-context" class="create-context"><input id="context-name" maxlength="80" placeholder="e.g. English · Unit 1.6"><button class="button primary" type="submit">Create context</button></form><div id="contexts-list"></div>
+</section>
+<section id="settings" class="panel" hidden>
+  <div class="section-hero"><p class="kicker">YOUR PROVIDER · YOUR KEY</p><h1>Settings</h1><p>DKP talks directly to the AI provider you choose.</p></div>
+  <form id="settings-form"><div class="settings-card">
+    <label for="provider">AI provider</label><select id="provider"><option value="gemini">Google Gemini</option><option value="openai">OpenAI</option><option value="anthropic">Anthropic Claude</option><option value="deepseek">DeepSeek</option></select>
+    <label for="api-key">API key</label><div class="key-row"><input id="api-key" type="password" autocomplete="off" placeholder="Paste the selected provider key"><button id="show-key" class="text-button" type="button">Show</button></div>
+    <label class="check"><input id="remember-key" type="checkbox"><span>Remember on this device<small>Stored in the Firefox extension profile, not an encrypted vault.</small></span></label>
+    <div class="button-row"><button id="save-key" class="button primary" type="button">Save & load models</button><button id="refresh-models" class="button" type="button">Refresh</button><button id="forget-key" class="text-button danger" type="button">Forget</button></div>
+    <label for="model">Model</label><select id="model"><option value="">Connect a provider first</option></select><p id="provider-note" class="help"></p>
+  </div><div class="settings-card"><div class="two-col"><div><label for="native-language">Native language</label><select id="native-language"><option>Русский</option><option>English</option><option>Español</option><option>Deutsch</option><option>Français</option></select></div><div><label for="output-language">Explanations</label><select id="output-language"><option value="native">Native language</option><option value="original">Original language</option><option value="bilingual">Both languages</option></select></div></div>
+    <label for="answer-mode">Answer style</label><select id="answer-mode"><option>Answer + explanation</option><option>Concise answer</option><option>Detailed explanation</option><option>Hints first</option></select>
+    <label for="summary-style">Summary style</label><select id="summary-style"><option>Study notes</option><option>Quick overview</option><option>Detailed summary</option></select>
+    <button class="button primary full" type="submit">Save preferences</button><p id="settings-note" class="help"></p>
+  </div></form><div class="privacy-strip"><span>◈</span><p>Website content is sent only when you run a DKP action, directly to the selected provider. No DKP server, analytics or shared answer database. <a href="privacy.html" target="_blank">Privacy details ↗</a></p></div>
+</section>
+</main><footer><span>DKP · Deep Knowledge Partner</span><span>Beta 0.2.0</span></footer>
+</div><script src="sidebar.js"></script></body></html>

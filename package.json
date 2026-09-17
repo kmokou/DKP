@@ -1,0 +1,34 @@
+{
+  "name": "dkp-firefox",
+  "version": "0.2.0",
+  "description": "DKP — Deep Knowledge Partner for Firefox",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "lint:extension": "web-ext lint --source-dir dist --warnings-as-errors",
+    "package": "npm run build && web-ext build --source-dir dist --artifacts-dir artifacts --overwrite-dest",
+    "dev": "npm run build && web-ext run --source-dir dist",
+    "test:ui": "node scripts/smoke-ui.mjs",
+    "test:content": "node scripts/smoke-content.mjs",
+    "test:browser": "npm run build && node scripts/test-browser.mjs",
+    "check": "npm run typecheck && npm test && npm run build && npm run lint:extension && node scripts/test-browser.mjs"
+  },
+  "devDependencies": {
+    "@types/firefox-webext-browser": "^120.0.0",
+    "@types/node": "^22.0.0",
+    "esbuild": "^0.28.2",
+    "jsdom": "^26.0.0",
+    "playwright": "^1.51.0",
+    "prettier": "^3.9.6",
+    "typescript": "^5.8.0",
+    "vitest": "^5.0.0",
+    "web-ext": "10.6.0"
+  },
+  "overrides": {
+    "adm-zip": "0.6.1",
+    "image-size": "2.0.4"
+  }
+}

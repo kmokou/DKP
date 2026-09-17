@@ -1,0 +1,39 @@
+{
+  "manifest_version": 3,
+  "name": "DKP — Deep Knowledge Partner",
+  "version": "0.2.0",
+  "description": "Cross-page study contexts, grounded answers, summaries, translations and exercise solving with your own AI provider.",
+  "browser_specific_settings": {
+    "gecko": {
+      "id": "dkp@kmokou.github.io",
+      "strict_min_version": "142.0",
+      "data_collection_permissions": {
+        "required": ["websiteContent"],
+        "optional": []
+      }
+    }
+  },
+  "permissions": ["storage", "activeTab", "scripting", "tabs"],
+  "host_permissions": [
+    "https://generativelanguage.googleapis.com/*",
+    "https://api.openai.com/*",
+    "https://api.anthropic.com/*",
+    "https://api.deepseek.com/*"
+  ],
+  "background": { "scripts": ["background.js"] },
+  "action": {
+    "default_title": "Open DKP",
+    "default_popup": "popup.html",
+    "default_icon": { "48": "icons/icon.svg", "96": "icons/icon.svg" }
+  },
+  "icons": { "48": "icons/icon.svg", "96": "icons/icon.svg" },
+  "sidebar_action": {
+    "default_panel": "sidebar.html",
+    "default_title": "DKP",
+    "default_icon": "icons/icon.svg"
+  },
+  "options_ui": { "page": "sidebar.html#settings", "open_in_tab": true },
+  "content_security_policy": {
+    "extension_pages": "script-src 'self'; object-src 'none'; connect-src https://generativelanguage.googleapis.com https://api.openai.com https://api.anthropic.com https://api.deepseek.com"
+  }
+}
