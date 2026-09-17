@@ -62,7 +62,7 @@ await page.evaluate(({ map }) => globalThis.dkpListeners[0]({
   { id: "quiz", type: "quiz", startBlockId: native.blockId, endBlockId: native.blockId,
     anchorBlockId: native.blockId, action: "solve", reason: "native control" },
 ] }});
-assert.equal(await page.getByRole("button", { name: /Solve all page/ }).count(), 1);
+assert.equal(await page.getByRole("button", { name: /Solve all tasks/ }).count(), 1);
 assert.equal(await page.getByRole("button", { name: /Summarize this text/ }).count(), 1);
 assert.equal(await page.getByRole("button", { name: /Generate answer/ }).count(), 1);
 assert.equal(await page.locator("h1 + .dkp-root").count(), 0);

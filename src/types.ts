@@ -108,6 +108,7 @@ export interface GenerateRequest {
   snapshot: Snapshot;
   contextId?: string;
   taskId?: string;
+  blockIds?: string[];
   question?: string;
   context?: string;
   attachment?: Attachment;

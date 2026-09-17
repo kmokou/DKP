@@ -78,6 +78,16 @@ async function loadState() {
   get("context-count").textContent = String(contexts.length);
   fillSettings();
 }
+browser.storage.onChanged.addListener((changes, area) => {
+  if (area !== "local" || !changes.contexts) return;
+  void loadState().then(() => {
+    renderContexts();
+    if (activeContext) {
+      activeContext = contexts.find((context) => context.id === activeContext!.id);
+      if (activeContext && !get("workspace").hidden) showWorkspace();
+    }
+  }).catch(showError);
+});
 async function scanPage() {
   if (!sourceTabId) throw new Error("Open DKP from a lesson or exercise tab.");
   snapshot = await sendToPage<Snapshot>({ type: "scan" });
@@ -288,7 +298,12 @@ function renderContexts() {
       row.append(pageCopy, removePage);
       pages.append(row);
     }
-    card.append(header, pages);
+    const open = document.createElement("button");
+    open.className = "button";
+    open.type = "button";
+    open.textContent = "Open context →";
+    open.onclick = (event) => { event.stopPropagation(); openContext(context); };
+    card.append(header, pages, open);
     root.append(card);
   }
 }
@@ -299,20 +314,15 @@ function openContext(context: StudyContext) {
   clearError();
   if (sourceTabId) void scanPage().catch(showError);
   else {
-    get("context-gate").hidden = true;
-    get("active-workspace").hidden = false;
-    get("page-loading").hidden = true;
-    get("page-title").textContent = context.name;
-    get("page-url").textContent = "Context knowledge workspace";
-    get("page-words").textContent = "";
-    get("page-tasks").textContent = "";
-    get("active-context-name").textContent = context.name;
-    const detail = get("context-detail-pages");
-    detail.replaceChildren(...context.pages.map((page) => {
-      const row = document.createElement("div"); row.className = "stored-page";
-      const copy = document.createElement("span"); const title = document.createElement("b"); title.textContent = page.title;
-      const url = document.createElement("small"); url.textContent = page.url; copy.append(title, url); row.append(copy); return row;
-    }));
+    snapshot = {
+      title: context.name, url: "context://" + context.id,
+      fingerprint: context.pages.map((page) => page.fingerprint).join("-"),
+      blocks: context.pages.flatMap((page) => page.blocks), tasks: [], selection: "", media: [],
+      truncated: false, words: context.pages.flatMap((page) => page.blocks)
+        .reduce((total, block) => total + block.text.split(/\s+/).length, 0),
+    };
+    semanticMap = undefined;
+    showWorkspace();
     switchTab("workspace");
   }
 }

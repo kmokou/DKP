@@ -36,7 +36,7 @@ await page.addInitScript(() => {
           nativeLanguage: "Русский", outputLanguage: "native", level: "Natural",
           mode: "Answer + explanation", summaryStyle: "Study notes",
         },
-        contexts: [],
+        contexts: [context],
         providerStates: ["gemini", "openai", "anthropic", "deepseek"].map((provider) => ({
           provider, hasKey: provider === "gemini", remembered: false, model: "",
         })),
@@ -55,6 +55,7 @@ await page.addInitScript(() => {
       }};
       return { ok: true, data: true };
     }},
+    storage: { onChanged: { addListener: () => {} } },
     tabs: { sendMessage: async (_tab, message) => {
       if (message.type === "applySemanticMap") { applied = true; return snapshot; }
       if (message.type === "scan") return applied ? { ...snapshot, tasks: [{
@@ -65,15 +66,11 @@ await page.addInitScript(() => {
   };
 });
 
-await page.goto("http://127.0.0.1:4173/sidebar.html?tabId=42");
-await page.getByText("Where does this page belong?").waitFor();
-await page.locator("#quick-context-name").fill("English · Unit 1.6");
-await page.getByRole("button", { name: "Create & add" }).click();
-await page.getByText("Unit 1.6 · Lifelong Learning", { exact: true }).waitFor();
-assert.equal(await page.locator("#solve-all").isVisible(), true);
-assert.equal(await page.locator("#summarize").isEnabled(), true);
-assert.equal(await page.locator("#answer-questions").isEnabled(), true);
-assert.equal(await page.locator("#solve-tasks").isDisabled(), true);
+await page.goto("http://127.0.0.1:4173/sidebar.html");
+await page.getByText("Contexts", { exact: true }).first().waitFor();
+await page.getByRole("button", { name: "Open context →" }).click();
+await page.getByText("Ask across this context").waitFor();
+assert.equal(await page.locator("#devtools").isVisible(), true);
 assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);
 await page.screenshot({ path: "/tmp/dkp-ui.png", fullPage: true });
 assert.deepEqual(errors, []);

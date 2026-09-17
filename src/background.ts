@@ -34,7 +34,11 @@ function errorDetail(error: unknown): ErrorDetail {
     title: `${providerLabels[error.provider]} request failed`,
     message: error.message,
     details: { provider: error.provider, endpoint: error.endpoint, httpStatus: error.status,
-      response: redact(error.payload), timestamp: new Date().toISOString() },
+      providerMessage: typeof error.payload === "object" && error.payload
+        ? String((error.payload as any).error?.message || "") .slice(0, 600)
+        : String(redact(error.payload)).slice(0, 600),
+      note: "Open this context's DevTools for the raw provider exchange.",
+      timestamp: new Date().toISOString() },
   };
   if (error instanceof DOMException && error.name === "AbortError") return {
     title: "Request cancelled or timed out",
@@ -97,14 +101,21 @@ async function appendLlmLog(log: LlmLog) {
 }
 
 function fallbackSemanticMap(snapshot: Snapshot): SemanticMap {
-  const units: SemanticMap["units"] = snapshot.tasks
-    .filter((task) => task.kind === "moodle-task" || task.kind === "text-question")
+  const nativeUnits: SemanticMap["units"] = snapshot.tasks
+    .filter((task) => task.kind === "moodle-task")
     .map((task, index) => ({
       id: `native-${index}`, type: "quiz", startBlockId: task.blockId,
-      endBlockId: task.blockId, anchorBlockId: task.blockId,
-      action: task.kind === "text-question" ? "answer" : "solve",
-      reason: task.kind === "text-question" ? "Prose question fallback" : "Native LMS question control",
+      endBlockId: task.blockId, anchorBlockId: task.blockId, action: "solve",
+      reason: "Native LMS question control",
     }));
+  const prose = snapshot.tasks.filter((task) => task.kind === "text-question");
+  const units = [...nativeUnits];
+  if (prose.length) units.push({
+    id: "prose-question-group", type: "question",
+    startBlockId: prose[0].blockId, endBlockId: prose[prose.length - 1].blockId,
+    anchorBlockId: prose[prose.length - 1].blockId, action: "answer",
+    reason: "Grouped prose questions",
+  });
   const end = snapshot.words >= 80 ? summaryEndBlockId(snapshot) : undefined;
   if (end) units.push({
     id: "reading", type: "topic", startBlockId: snapshot.blocks[0]?.id || end,
@@ -113,7 +124,7 @@ function fallbackSemanticMap(snapshot: Snapshot): SemanticMap {
   });
   return {
     fingerprint: snapshot.fingerprint,
-    pageType: units.some((u) => u.action === "solve") && end ? "mixed"
+    pageType: units.some((u) => u.action === "solve" || u.action === "answer") && end ? "mixed"
       : units.some((u) => u.action === "solve") ? "quiz" : end ? "topic" : "reference",
     units,
   };
@@ -123,6 +134,10 @@ async function classify(snapshot: Snapshot, force = false): Promise<SemanticMap>
   const cacheKey = `semantic-${snapshot.fingerprint}`;
   const cache = (await browser.storage.session.get(cacheKey))[cacheKey] as SemanticMap | undefined;
   if (cache && !force) return cache;
+  // A page must remain usable even when a provider is out of quota. Structural
+  // detection is deterministic; LLM calls are reserved for the action the user
+  // explicitly requests, which also prevents a hidden mapping request per page.
+  if (!force) return fallbackSemanticMap(snapshot);
   const settings = await getSettings();
   const key = await getKey(settings.provider);
   if (!key) return fallbackSemanticMap(snapshot);
@@ -203,10 +218,14 @@ async function generate(request: GenerateRequest, owner: string): Promise<Result
   const contexts = await getContexts();
   const context = contexts.find((item) => item.id === request.contextId);
   const taskText = [request.question, request.context, ...tasks.map((task) => task.text)].filter(Boolean).join(" ");
-  const contextBlocks = retrieveContext(context, request.snapshot, taskText);
+  const pageBlocks = request.blockIds?.length
+    ? request.snapshot.blocks.filter((block) => request.blockIds!.includes(block.id))
+    : request.snapshot.blocks;
+  const contextBlocks = request.snapshot.url.startsWith("context://") || request.mode === "summary" || request.mode === "translate"
+    ? [] : retrieveContext(context, request.snapshot, taskText);
   const snapshot: Snapshot = {
     ...structuredClone(request.snapshot),
-    blocks: [...request.snapshot.blocks, ...contextBlocks],
+    blocks: [...pageBlocks, ...contextBlocks],
     tasks,
   };
   const { requestId, force, ...cacheable } = request;
@@ -427,6 +446,21 @@ browser.runtime.onMessage.addListener((message, sender) => {
         const semanticMap = message.semanticMap || await classify(message.snapshot);
         contexts[index] = upsertPage(contexts[index], contextPage(message.snapshot, semanticMap));
         await saveContexts(contexts);
+        return { context: contexts[index], semanticMap };
+      }
+      case "quickAddPage": {
+        if (typeof message.tabId !== "number") throw new Error("Open a lesson or exercise tab first.");
+        const contexts = await getContexts();
+        const index = contexts.findIndex((context) => context.id === message.contextId);
+        if (index < 0) throw new Error("Choose a valid context.");
+        await ensureContent(message.tabId);
+        const snapshot = await browser.tabs.sendMessage(message.tabId, { type: "scan" }) as Snapshot;
+        const semanticMap = fallbackSemanticMap(snapshot);
+        contexts[index] = upsertPage(contexts[index], contextPage(snapshot, semanticMap));
+        await saveContexts(contexts);
+        await browser.tabs.sendMessage(message.tabId, {
+          type: "applySemanticMap", semanticMap, contextId: contexts[index].id,
+        });
         return { context: contexts[index], semanticMap };
       }
       case "removeContextPage": {

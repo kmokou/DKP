@@ -156,7 +156,7 @@ export function extract(doc: Document = document): Extraction {
   // Keep a conservative local fallback for discussion and comprehension
   // questions when semantic AI mapping is unavailable. Headings are left out
   // because article subheads often end with a question mark.
-  if (!tasks.length) {
+  {
     const questionBlocks = blocks.filter((block) =>
       !/^h[1-6]$/i.test(block.kind) && block.text.length >= 24 && /\?/.test(block.text),
     );

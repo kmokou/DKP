@@ -18,11 +18,11 @@ function showError(reason: unknown) {
     ? reason as { title?: string; message: unknown } : undefined;
   error.textContent = (value?.title ? value.title + ": " : "") + stringifyUnknown(value?.message ?? reason);
 }
-async function openContext(contextId: string) {
+async function addPageToContext(contextId: string) {
   const [tab] = await browser.tabs.query({ active: true, currentWindow: true });
   if (!tab?.id || !tab.url || !/^https?:\/\//.test(tab.url)) throw new Error("Open a lesson or exercise first.");
-  const response = await browser.runtime.sendMessage({ type: "openWorkspace", sourceTabId: tab.id, contextId });
-  if (!response?.ok) throw response?.error || new Error("DKP could not open the context.");
+  const response = await browser.runtime.sendMessage({ type: "quickAddPage", tabId: tab.id, contextId });
+  if (!response?.ok) throw response?.error || new Error("DKP could not add this page.");
   window.close();
 }
 function render(contexts: StudyContext[]) {
@@ -33,16 +33,19 @@ function render(contexts: StudyContext[]) {
     const copy = document.createElement("span"); const title = document.createElement("b"); title.textContent = context.name;
     const meta = document.createElement("small"); meta.textContent = context.pages.length + " page" + (context.pages.length === 1 ? "" : "s"); copy.append(title, meta);
     const action = document.createElement("span"); action.textContent = "+ Add page"; button.append(copy, action);
-    button.onclick = () => void openContext(context.id).catch(showError); root.append(button);
+    button.onclick = () => void addPageToContext(context.id).catch(showError); root.append(button);
   }
 }
 async function start() {
   try { const state = await rpc<{ contexts: StudyContext[] }>({ type: "state" }); render(state.contexts); settings.href = browser.runtime.getURL("sidebar.html#settings"); }
   catch (reason) { showError(reason); }
 }
+browser.storage.onChanged.addListener((changes, area) => {
+  if (area === "local" && changes.contexts) void start();
+});
 form.addEventListener("submit", async (event) => {
   event.preventDefault();
-  try { const context = await rpc<StudyContext>({ type: "createContext", name: nameInput.value }); await openContext(context.id); }
+  try { const context = await rpc<StudyContext>({ type: "createContext", name: nameInput.value }); await addPageToContext(context.id); }
   catch (reason) { showError(reason); }
 });
 void start();

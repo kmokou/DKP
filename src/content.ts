@@ -67,7 +67,9 @@ function install() {
   }
   function applyMap(map: SemanticMap): Snapshot {
     current = extract();
-    const native = current.snapshot.tasks.filter((task) => task.kind === "moodle-task");
+    const native = current.snapshot.tasks.filter((task) =>
+      task.kind === "moodle-task" || task.kind === "text-question",
+    );
     const semanticTasks: Task[] = [];
     for (const unit of map.units) {
       if (unit.action !== "answer" && unit.action !== "solve") continue;
@@ -116,7 +118,10 @@ function install() {
       const shadow = makeHost(anchor);
       if (unit.action === "summary") {
         const button = makeButton("≋ Summarize this text",
-          () => void runSummary(shadow, button), "trigger summary-trigger");
+          () => void runSummary(unit, shadow, button), "trigger summary-trigger");
+        shadow.append(button);
+      } else if (unit.action === "answer") {
+        const button = makeButton("✦ Generate answers", () => void runTextAnswers(shadow, button));
         shadow.append(button);
       } else {
         const task = taskForUnit(unit);
@@ -160,8 +165,15 @@ function install() {
     try { renderAnswers(shadow, await request({ mode: "answer", taskId }, shadow, button), taskId); }
     catch {}
   }
-  async function runSummary(shadow: ShadowRoot, button: HTMLButtonElement) {
-    try { renderSummary(shadow, await request({ mode: "summary" }, shadow, button)); }
+  async function runSummary(unit: SemanticUnit, shadow: ShadowRoot, button: HTMLButtonElement) {
+    try {
+      const blockIds = rangeBlocks(current.snapshot, unit).map((block) => block.id);
+      renderSummary(shadow, await request({ mode: "summary", blockIds }, shadow, button));
+    }
+    catch {}
+  }
+  async function runTextAnswers(shadow: ShadowRoot, button: HTMLButtonElement) {
+    try { renderAnswers(shadow, await request({ mode: "textAnswers" }, shadow, button)); }
     catch {}
   }
   async function runAll(shadow: ShadowRoot, button: HTMLButtonElement) {
